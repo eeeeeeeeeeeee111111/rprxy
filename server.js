@@ -3,16 +3,12 @@ var express = require('express');
 var https = require('https');
 var url = require('url');
 var path = require('path');
-
 var api = require('./api.js');
 var blocked = require('./static/blocked.json');
 var reBlocked = require('./static/re_blocked.json');
-
-var port = process.env.PORT || 80;
-var subdomainsAsPath = false;
+var subdomainsAsPath = true;  // เปลี่ยนเป็น true เพื่อ path-based สำหรับ Vercel
 var serveHomepage = true;
 var serveHomepageOnAllSubdomains = false;
-
 var httpsProxy = proxy.createProxyServer({
   agent: new https.Agent({
     checkServerIdentity: function (host, cert) {
@@ -21,11 +17,9 @@ var httpsProxy = proxy.createProxyServer({
   }),
   changeOrigin: true
 });
-
 var httpProxy = proxy.createProxyServer({
   changeOrigin: true
 });
-
 function stripSub (link) {
   var original = url.parse(link);
   var sub = '';
@@ -38,7 +32,6 @@ function stripSub (link) {
   }
   return [path || '/', sub];
 }
-
 function getSubdomain (req, rewrite) {
   var sub;
   if (subdomainsAsPath) {
@@ -53,32 +46,24 @@ function getSubdomain (req, rewrite) {
   }
   return sub;
 }
-
 function onProxyError (err, req, res) {
   console.error(err);
-
   res.writeHead(500, {
     'Content-Type': 'text/plain'
   });
-
   res.end('Proxying failed.');
 }
-
 function onProxyReq (proxyReq, req, res, options) {
   proxyReq.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36');
   proxyReq.removeHeader('roblox-id');
 }
-
 httpsProxy.on('error', onProxyError);
 httpsProxy.on('proxyReq', onProxyReq);
 httpProxy.on('error', onProxyError);
 httpProxy.on('proxyReq', onProxyReq);
-
 var app = express();
-
 app.use('/proxy', express.static('./static'));
 app.use('/proxy', api);
-
 app.use(function (req, res, next) {
   if (serveHomepage && stripSub(req.url)[0] === '/') {
     if (serveHomepageOnAllSubdomains || !getSubdomain(req)) {
@@ -88,7 +73,6 @@ app.use(function (req, res, next) {
   }
   next();
 });
-
 app.use(function (req, res, next) {
   for (var i = 0; i < blocked.length; i++) {
     if (req.url === blocked[i]) {
@@ -104,7 +88,6 @@ app.use(function (req, res, next) {
   }
   next();
 });
-
 app.use(function (req, res, next) {
   console.log('PROXY REQUEST; HOST: ' + req.headers.host + '; URL: ' + req.url + '; OPT: ' + req.body + '; COOKIE: ' + req.headers.cookie + ';');
   var subdomain = getSubdomain(req, true);
@@ -118,17 +101,14 @@ app.use(function (req, res, next) {
     httpProxy.web(req, res, options);
   }
 });
-
 app.use(function (err, req, res, next) {
   console.error(err);
-
   res.writeHead(500, {
     'Content-Type': 'text/plain'
   });
-
   res.end('Proxy handler failed.');
 });
 
-app.listen(port, function () {
-  console.log('Listening on port ' + port);
-});
+// ลบ app.listen() เพราะ Vercel serverless ไม่ใช้ port
+// เพิ่มบรรทัดนี้เพื่อ export app สำหรับ Vercel handler
+module.exports = app;
